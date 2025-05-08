@@ -1,39 +1,41 @@
 import streamlit as st
 import openai
 import os
-from pathlib import Path
+from io import BytesIO
 import tempfile
 import time
+from pydub import AudioSegment
+from streamlit_mic_recorder import mic_recorder
 
 # Configuration
 st.set_page_config(page_title="Live Meeting Assistant", layout="wide")
-openai.api_key = st.secrets["OPENAI_API_KEY"]  # Add your key to .streamlit/secrets.toml
+openai.api_key = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
 
 # UI Header
 st.title("Live Teams Meeting Assistant (Web App)")
-st.markdown("Transcribe live audio and ask ChatGPT questions about the ongoing meeting.")
+st.markdown("Record your mic, transcribe the meeting, and ask ChatGPT questions about it.")
 
-# Audio Upload Section
-st.header("1. Upload or Stream Your Audio")
-uploaded_audio = st.file_uploader("Upload audio from your virtual microphone", type=["wav", "mp3", "m4a", "webm"])
+# Audio Recorder Section
+st.header("1. Record Audio from Your Microphone")
+audio_bytes = mic_recorder(start_prompt="Click to record", stop_prompt="Stop recording", key="rec")
 
 # Ask a Question
 st.header("2. Ask ChatGPT About the Meeting")
 user_question = st.text_input("Enter your question")
 
 # Transcription (using OpenAI Whisper API)
-def transcribe_audio(audio_path):
-    with open(audio_path, "rb") as audio_file:
+def transcribe_audio_bytes(audio_data):
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+        tmp.write(audio_data.getvalue())
+        tmp_path = tmp.name
+    with open(tmp_path, "rb") as audio_file:
         transcript = openai.Audio.transcribe("whisper-1", audio_file)
         return transcript["text"]
 
-# Handle audio transcription and question submission
-if uploaded_audio and user_question:
+# Handle transcription and GPT response
+if audio_bytes and user_question:
     with st.spinner("Transcribing audio..."):
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
-            tmp.write(uploaded_audio.read())
-            tmp_path = tmp.name
-        transcript_text = transcribe_audio(tmp_path)
+        transcript_text = transcribe_audio_bytes(audio_bytes)
 
     prompt = f"""
     You are attending a Microsoft Teams meeting. Here is the live transcript:
